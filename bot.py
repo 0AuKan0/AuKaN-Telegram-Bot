@@ -1,35 +1,54 @@
 #!/usr/bin/env python3
 import os
 import requests
-from telegram import Update
-from telegram.ext import Application, MessageHandler, filters, ContextTypes
+import time
+from telegram import Bot
+from telegram.error import TelegramError
 
-print("🚀 INICIANDO BOT AUKAN...")
+print("🚀 INICIANDO BOT AUKAN - VERSIÓN SIMPLIFICADA...")
 
-# VERIFICACIÓN SEGURA DE VARIABLES
+# Configuración
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 DEEPSEEK_API_KEY = os.environ.get('DEEPSEEK_API_KEY')
 
 print(f"✅ Telegram Token: {'✅' if TELEGRAM_TOKEN else '❌'}")
 print(f"✅ DeepSeek API Key: {'✅' if DEEPSEEK_API_KEY else '❌'}")
 
-if not TELEGRAM_TOKEN:
-    print("❌ ERROR: TELEGRAM_BOT_TOKEN no configurado")
-    exit(1)
-if not DEEPSEEK_API_KEY:
-    print("❌ ERROR: DEEPSEEK_API_KEY no configurado")
+if not TELEGRAM_TOKEN or not DEEPSEEK_API_KEY:
+    print("❌ ERROR: Faltan variables de entorno")
     exit(1)
 
-print("✅ TODAS LAS VARIABLES CONFIGURADAS CORRECTAMENTE")
+# Inicializar bot
+bot = Bot(token=TELEGRAM_TOKEN)
+print("✅ Bot inicializado")
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_message = update.message.text
-    print(f"📩 Mensaje recibido: {user_message}")
-    
+def get_last_update_id():
+    """Obtener el ID del último update procesado"""
     try:
-        # Personalidad del Manager
-        system_prompt = "Eres el mánager de AuKaN, rapero de Rubí. Tono callejero, directo y motivador. Usa jerga urbana."
+        updates = bot.get_updates()
+        if updates:
+            return updates[-1].update_id
+        return 0
+    except Exception as e:
+        print(f"❌ Error obteniendo updates: {e}")
+        return 0
+
+def process_message(update):
+    """Procesar un mensaje y responder"""
+    try:
+        user_message = update.message.text
+        user_id = update.message.from_user.id
+        chat_id = update.message.chat_id
         
+        print(f"📩 Mensaje de {user_id}: {user_message}")
+        
+        # Personalidad del Manager
+        system_prompt = """Eres el mánager de AuKaN, un rapero underground de Rubí (Barcelona). 
+        Tu tono es callejero, directo y motivador. Hablas en español, usando jerga urbana.
+        Eres práctico, leal y siempre buscas oportunidades para que AuKaN crezca.
+        Responde como si fueras su mánager de verdad."""
+        
+        # Conectar con DeepSeek API
         headers = {
             'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
             'Content-Type': 'application/json'
@@ -43,34 +62,50 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
         }
         
-        response = requests.post('https://api.deepseek.com/chat/completions', json=data, headers=headers)
+        response = requests.post('https://api.deepseek.com/chat/completions', 
+                               json=data, headers=headers, timeout=30)
         
         if response.status_code == 200:
             result = response.json()
             bot_response = result['choices'][0]['message']['content']
-            print(f"🤖 Respondiendo: {bot_response[:50]}...")
-            await update.message.reply_text(bot_response)
+            print(f"🤖 Enviando respuesta...")
+            bot.send_message(chat_id=chat_id, text=bot_response)
         else:
-            error_msg = f"⚠️ Error API: {response.status_code}"
-            print(error_msg)
-            await update.message.reply_text("🎤 Ahora no caigo, jefe. ¿Repites?")
+            print(f"❌ Error API: {response.status_code}")
+            bot.send_message(chat_id=chat_id, 
+                           text="🎤 Ahora no caigo, jefe. ¿Repites?")
             
     except Exception as e:
-        print(f"❌ Error: {e}")
-        await update.message.reply_text("💥 Fallo técnico, herma. Reintenta.")
+        print(f"❌ Error procesando mensaje: {e}")
+        try:
+            bot.send_message(chat_id=update.message.chat_id, 
+                           text="💥 Fallo técnico, herma. Reintenta.")
+        except:
+            pass
 
 def main():
-    print("🔥 CONFIGURANDO BOT...")
-    try:
-        app = Application.builder().token(TELEGRAM_TOKEN).build()
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-        
-        print("✅ BOT LISTO - INICIANDO...")
-        app.run_polling()
-        
-    except Exception as e:
-        print(f"❌ Error fatal: {e}")
-        exit(1)
+    """Loop principal simplificado"""
+    print("🔥 INICIANDO LOOP PRINCIPAL...")
+    last_update_id = get_last_update_id()
+    
+    while True:
+        try:
+            # Obtener nuevos mensajes
+            updates = bot.get_updates(offset=last_update_id + 1, timeout=60)
+            
+            for update in updates:
+                if update.update_id > last_update_id:
+                    last_update_id = update.update_id
+                    process_message(update)
+            
+            time.sleep(1)
+            
+        except TelegramError as e:
+            print(f"⚠️ Error de Telegram: {e}")
+            time.sleep(5)
+        except Exception as e:
+            print(f"❌ Error general: {e}")
+            time.sleep(10)
 
 if __name__ == '__main__':
     main()
