@@ -1,137 +1,117 @@
 #!/usr/bin/env python3
 import os
 import requests
-import asyncio
-import threading
 from flask import Flask
 from telegram import Bot
-from telegram.error import TelegramError
 
-print("🚀 INICIANDO BOT AUKAN - CON GROQ...")
+print("🔧 MODO PRUEBA - BOT AUKAN")
 
 # Configuración
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
-PORT = int(os.environ.get('PORT', 10000))
 
-print(f"✅ Telegram Token: {'✅' if TELEGRAM_TOKEN else '❌'}")
-print(f"✅ Groq API Key: {'✅' if GROQ_API_KEY else '❌'}")
+print("=== VERIFICACIÓN ===")
+print(f"TELEGRAM_TOKEN: {'✅' if TELEGRAM_TOKEN else '❌'}")
+print(f"GROQ_API_KEY: {'✅' if GROQ_API_KEY else '❌'}")
 
-if not TELEGRAM_TOKEN:
-    print("❌ ERROR: Falta TELEGRAM_BOT_TOKEN")
-    exit(1)
-if not GROQ_API_KEY:
-    print("❌ ERROR: Falta GROQ_API_KEY")
+if not TELEGRAM_TOKEN or not GROQ_API_KEY:
+    print("❌ ERROR: Faltan variables de entorno")
     exit(1)
 
-# Inicializar bot y Flask
+# Inicializar
 bot = Bot(token=TELEGRAM_TOKEN)
 app = Flask(__name__)
 
-print("✅ Bot y servidor inicializados")
+print("✅ Componentes inicializados")
 
 @app.route('/')
 def home():
-    return "🤖 AuKaN Manager Bot - ACTIVO con Groq"
+    return "🤖 Bot AuKaN - PRUEBA"
 
-@app.route('/health')
-def health():
-    return "✅ OK"
-
-async def process_message(update):
-    """Procesar un mensaje y responder"""
+# Probar Groq directamente
+def test_groq():
+    print("🧪 TESTEANDO GROQ API...")
+    
+    headers = {
+        'Authorization': f'Bearer {GROQ_API_KEY}',
+        'Content-Type': 'application/json'
+    }
+    
+    data = {
+        'model': 'llama3-8b-8192',
+        'messages': [{'role': 'user', 'content': 'Responde solo con OK si funciona'}],
+        'max_tokens': 10
+    }
+    
     try:
-        user_message = update.message.text
-        chat_id = update.message.chat_id
-        
-        print(f"📩 Mensaje recibido: '{user_message}'")
-        
-        # Personalidad del Manager de AuKaN
-        system_prompt = """Eres el mánager de AuKaN, un rapero underground de Rubí (Barcelona). 
-        Tu tono es callejero, directo y motivador. Hablas en español, usando jerga urbana.
-        Eres práctico, leal y siempre buscas oportunidades para que AuKaN crezca.
-        Responde como si fueras su mánager de verdad, con actitud y confianza."""
-        
-        headers = {
-            'Authorization': f'Bearer {GROQ_API_KEY}',
-            'Content-Type': 'application/json'
-        }
-        
-        data = {
-            'model': 'llama3-8b-8192',  # Modelo rápido y gratis de Groq
-            'messages': [
-                {'role': 'system', 'content': system_prompt},
-                {'role': 'user', 'content': user_message}
-            ],
-            'max_tokens': 500,
-            'temperature': 0.7
-        }
-        
-        print("🔌 Conectando con Groq API...")
-        
         response = requests.post(
             'https://api.groq.com/openai/v1/chat/completions', 
             json=data, 
             headers=headers, 
-            timeout=30
+            timeout=10
         )
         
-        print(f"📊 Status Code: {response.status_code}")
+        print(f"📊 Status: {response.status_code}")
+        print(f"📊 Respuesta: {response.text}")
         
-        if response.status_code == 200:
-            result = response.json()
-            bot_response = result['choices'][0]['message']['content']
-            print(f"✅ Respuesta obtenida ({len(bot_response)} caracteres)")
-            await bot.send_message(chat_id=chat_id, text=bot_response)
-        else:
-            print(f"❌ Error Groq API: {response.status_code}")
-            print(f"❌ Response: {response.text}")
-            await bot.send_message(chat_id=chat_id, 
-                                text="🎤 Ahora no caigo, jefe. ¿Repites?")
-            
+        return response.status_code == 200
+        
     except Exception as e:
-        print(f"❌ Error en process_message: {e}")
-        await bot.send_message(chat_id=update.message.chat_id, 
-                            text="💥 Fallo técnico, herma. Reintenta.")
+        print(f"❌ Error en test: {e}")
+        return False
 
-async def bot_loop():
-    """Loop principal del bot"""
-    print("🔥 BOT LISTO - Esperando mensajes...")
+# Probar Telegram
+def test_telegram():
+    print("🧪 TESTEANDO TELEGRAM...")
+    try:
+        bot_info = bot.get_me()
+        print(f"✅ Bot: {bot_info.first_name} (@{bot_info.username})")
+        return True
+    except Exception as e:
+        print(f"❌ Error Telegram: {e}")
+        return False
+
+# Loop simple de mensajes
+def simple_bot_loop():
+    print("🔄 INICIANDO BOT SIMPLE...")
     
-    # Obtener último ID para ignorar mensajes viejos
-    updates = await bot.get_updates()
-    last_update_id = updates[-1].update_id if updates else 0
-    print(f"📝 Last Update ID: {last_update_id}")
+    last_update_id = 0
     
     while True:
         try:
-            updates = await bot.get_updates(offset=last_update_id + 1, timeout=10)
+            updates = bot.get_updates(offset=last_update_id + 1, timeout=10)
             
             for update in updates:
                 if update.update_id > last_update_id:
                     last_update_id = update.update_id
-                    print(f"🔄 Procesando nuevo mensaje...")
-                    await process_message(update)
-            
-            await asyncio.sleep(0.5)
-            
+                    
+                    user_msg = update.message.text
+                    chat_id = update.message.chat_id
+                    
+                    print(f"💬 Mensaje: {user_msg}")
+                    
+                    # Respuesta fija para probar
+                    bot.send_message(
+                        chat_id=chat_id, 
+                        text="✅ Bot funcionando. Mensaje recibido!"
+                    )
+                    
         except Exception as e:
-            print(f"⚠️ Error en bot_loop: {e}")
-            await asyncio.sleep(5)
-
-def run_flask():
-    """Ejecutar servidor Flask"""
-    print(f"🌐 Servidor web en puerto {PORT}")
-    app.run(host='0.0.0.0', port=PORT, debug=False)
-
-async def main():
-    """Función principal"""
-    # Iniciar servidor web en segundo plano
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    
-    # Iniciar el bot
-    await bot_loop()
+            print(f"⚠️ Error en loop: {e}")
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    print("🚀 INICIANDO PRUEBAS...")
+    
+    # Ejecutar tests
+    tg_ok = test_telegram()
+    groq_ok = test_groq()
+    
+    print(f"\n📊 RESULTADOS:")
+    print(f"Telegram: {'✅' if tg_ok else '❌'}")
+    print(f"Groq API: {'✅' if groq_ok else '❌'}")
+    
+    if tg_ok:
+        print("\n🎯 Bot simple activo - Responde con mensaje fijo")
+        simple_bot_loop()
+    else:
+        print("❌ No se puede iniciar bot por errores")
