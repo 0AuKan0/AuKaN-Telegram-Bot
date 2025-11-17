@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 import os
 import requests
-import time
+import asyncio
+import logging
 from telegram import Bot
 from telegram.error import TelegramError
 
-print("🚀 INICIANDO BOT AUKAN - VERSIÓN SIMPLIFICADA...")
+print("🚀 INICIANDO BOT AUKAN - VERSIÓN ASYNC...")
 
 # Configuración
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
@@ -22,10 +23,10 @@ if not TELEGRAM_TOKEN or not DEEPSEEK_API_KEY:
 bot = Bot(token=TELEGRAM_TOKEN)
 print("✅ Bot inicializado")
 
-def get_last_update_id():
+async def get_last_update_id():
     """Obtener el ID del último update procesado"""
     try:
-        updates = bot.get_updates()
+        updates = await bot.get_updates()
         if updates:
             return updates[-1].update_id
         return 0
@@ -33,7 +34,7 @@ def get_last_update_id():
         print(f"❌ Error obteniendo updates: {e}")
         return 0
 
-def process_message(update):
+async def process_message(update):
     """Procesar un mensaje y responder"""
     try:
         user_message = update.message.text
@@ -48,7 +49,7 @@ def process_message(update):
         Eres práctico, leal y siempre buscas oportunidades para que AuKaN crezca.
         Responde como si fueras su mánager de verdad."""
         
-        # Conectar con DeepSeek API
+        # Conectar con DeepSeek API (esto es síncrono, no necesita await)
         headers = {
             'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
             'Content-Type': 'application/json'
@@ -69,43 +70,44 @@ def process_message(update):
             result = response.json()
             bot_response = result['choices'][0]['message']['content']
             print(f"🤖 Enviando respuesta...")
-            bot.send_message(chat_id=chat_id, text=bot_response)
+            await bot.send_message(chat_id=chat_id, text=bot_response)
         else:
             print(f"❌ Error API: {response.status_code}")
-            bot.send_message(chat_id=chat_id, 
+            await bot.send_message(chat_id=chat_id, 
                            text="🎤 Ahora no caigo, jefe. ¿Repites?")
             
     except Exception as e:
         print(f"❌ Error procesando mensaje: {e}")
         try:
-            bot.send_message(chat_id=update.message.chat_id, 
+            await bot.send_message(chat_id=update.message.chat_id, 
                            text="💥 Fallo técnico, herma. Reintenta.")
         except:
             pass
 
-def main():
-    """Loop principal simplificado"""
+async def main():
+    """Loop principal async"""
     print("🔥 INICIANDO LOOP PRINCIPAL...")
-    last_update_id = get_last_update_id()
+    last_update_id = await get_last_update_id()
     
     while True:
         try:
             # Obtener nuevos mensajes
-            updates = bot.get_updates(offset=last_update_id + 1, timeout=60)
+            updates = await bot.get_updates(offset=last_update_id + 1, timeout=60)
             
             for update in updates:
                 if update.update_id > last_update_id:
                     last_update_id = update.update_id
-                    process_message(update)
+                    await process_message(update)
             
-            time.sleep(1)
+            await asyncio.sleep(1)
             
         except TelegramError as e:
             print(f"⚠️ Error de Telegram: {e}")
-            time.sleep(5)
+            await asyncio.sleep(5)
         except Exception as e:
             print(f"❌ Error general: {e}")
-            time.sleep(10)
+            await asyncio.sleep(10)
 
 if __name__ == '__main__':
-    main()
+    # Ejecutar el loop async
+    asyncio.run(main())
