@@ -7,18 +7,21 @@ from flask import Flask
 from telegram import Bot
 from telegram.error import TelegramError
 
-print("🚀 INICIANDO BOT AUKAN - CON DEPURACIÓN...")
+print("🚀 INICIANDO BOT AUKAN - CON GROQ...")
 
 # Configuración
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-DEEPSEEK_API_KEY = os.environ.get('DEEPSEEK_API_KEY')
+GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 PORT = int(os.environ.get('PORT', 10000))
 
 print(f"✅ Telegram Token: {'✅' if TELEGRAM_TOKEN else '❌'}")
-print(f"✅ DeepSeek API Key: {'✅' if DEEPSEEK_API_KEY else '❌'}")
+print(f"✅ Groq API Key: {'✅' if GROQ_API_KEY else '❌'}")
 
-if not TELEGRAM_TOKEN or not DEEPSEEK_API_KEY:
-    print("❌ ERROR: Faltan variables de entorno")
+if not TELEGRAM_TOKEN:
+    print("❌ ERROR: Falta TELEGRAM_BOT_TOKEN")
+    exit(1)
+if not GROQ_API_KEY:
+    print("❌ ERROR: Falta GROQ_API_KEY")
     exit(1)
 
 # Inicializar bot y Flask
@@ -29,7 +32,11 @@ print("✅ Bot y servidor inicializados")
 
 @app.route('/')
 def home():
-    return "🤖 AuKaN Manager Bot - ACTIVO"
+    return "🤖 AuKaN Manager Bot - ACTIVO con Groq"
+
+@app.route('/health')
+def health():
+    return "✅ OK"
 
 async def process_message(update):
     """Procesar un mensaje y responder"""
@@ -39,49 +46,53 @@ async def process_message(update):
         
         print(f"📩 Mensaje recibido: '{user_message}'")
         
-        # Personalidad del Manager - MÁS CORTA para probar
-        system_prompt = "Eres el mánager de AuKaN, rapero de Rubí. Responde con tono callejero."
+        # Personalidad del Manager de AuKaN
+        system_prompt = """Eres el mánager de AuKaN, un rapero underground de Rubí (Barcelona). 
+        Tu tono es callejero, directo y motivador. Hablas en español, usando jerga urbana.
+        Eres práctico, leal y siempre buscas oportunidades para que AuKaN crezca.
+        Responde como si fueras su mánager de verdad, con actitud y confianza."""
         
         headers = {
-            'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
+            'Authorization': f'Bearer {GROQ_API_KEY}',
             'Content-Type': 'application/json'
         }
         
         data = {
-            'model': 'deepseek-chat',
+            'model': 'llama3-8b-8192',  # Modelo rápido y gratis de Groq
             'messages': [
                 {'role': 'system', 'content': system_prompt},
                 {'role': 'user', 'content': user_message}
             ],
-            'max_tokens': 500
+            'max_tokens': 500,
+            'temperature': 0.7
         }
         
-        print("🔌 Conectando con DeepSeek API...")
+        print("🔌 Conectando con Groq API...")
         
         response = requests.post(
-            'https://api.deepseek.com/chat/completions', 
+            'https://api.groq.com/openai/v1/chat/completions', 
             json=data, 
             headers=headers, 
             timeout=30
         )
         
         print(f"📊 Status Code: {response.status_code}")
-        print(f"📊 Response Text: {response.text[:200]}...")
         
         if response.status_code == 200:
             result = response.json()
             bot_response = result['choices'][0]['message']['content']
-            print(f"✅ Respuesta obtenida: {bot_response[:50]}...")
+            print(f"✅ Respuesta obtenida ({len(bot_response)} caracteres)")
             await bot.send_message(chat_id=chat_id, text=bot_response)
         else:
-            print(f"❌ Error API: {response.status_code} - {response.text}")
+            print(f"❌ Error Groq API: {response.status_code}")
+            print(f"❌ Response: {response.text}")
             await bot.send_message(chat_id=chat_id, 
-                                text=f"⚠️ Error técnico (Code: {response.status_code})")
+                                text="🎤 Ahora no caigo, jefe. ¿Repites?")
             
     except Exception as e:
         print(f"❌ Error en process_message: {e}")
         await bot.send_message(chat_id=update.message.chat_id, 
-                            text="💥 Fallo en el servidor.")
+                            text="💥 Fallo técnico, herma. Reintenta.")
 
 async def bot_loop():
     """Loop principal del bot"""
@@ -99,7 +110,7 @@ async def bot_loop():
             for update in updates:
                 if update.update_id > last_update_id:
                     last_update_id = update.update_id
-                    print(f"🔄 Procesando update ID: {update.update_id}")
+                    print(f"🔄 Procesando nuevo mensaje...")
                     await process_message(update)
             
             await asyncio.sleep(0.5)
@@ -110,6 +121,7 @@ async def bot_loop():
 
 def run_flask():
     """Ejecutar servidor Flask"""
+    print(f"🌐 Servidor web en puerto {PORT}")
     app.run(host='0.0.0.0', port=PORT, debug=False)
 
 async def main():
@@ -117,7 +129,6 @@ async def main():
     # Iniciar servidor web en segundo plano
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
-    print(f"🌐 Servidor web en puerto {PORT}")
     
     # Iniciar el bot
     await bot_loop()
