@@ -2,26 +2,39 @@
 import os
 import requests
 import asyncio
-import logging
+import threading
+from flask import Flask
 from telegram import Bot
 from telegram.error import TelegramError
 
-print("🚀 INICIANDO BOT AUKAN - VERSIÓN ASYNC...")
+print("🚀 INICIANDO BOT AUKAN - CON SERVIDOR WEB...")
 
 # Configuración
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 DEEPSEEK_API_KEY = os.environ.get('DEEPSEEK_API_KEY')
+PORT = int(os.environ.get('PORT', 10000))
 
 print(f"✅ Telegram Token: {'✅' if TELEGRAM_TOKEN else '❌'}")
 print(f"✅ DeepSeek API Key: {'✅' if DEEPSEEK_API_KEY else '❌'}")
+print(f"✅ Puerto: {PORT}")
 
 if not TELEGRAM_TOKEN or not DEEPSEEK_API_KEY:
     print("❌ ERROR: Faltan variables de entorno")
     exit(1)
 
-# Inicializar bot
+# Inicializar bot y Flask
 bot = Bot(token=TELEGRAM_TOKEN)
-print("✅ Bot inicializado")
+app = Flask(__name__)
+
+print("✅ Bot y servidor inicializados")
+
+@app.route('/')
+def home():
+    return "🤖 AuKaN Manager Bot - ACTIVO"
+
+@app.route('/health')
+def health():
+    return "✅ OK"
 
 async def get_last_update_id():
     """Obtener el ID del último update procesado"""
@@ -49,7 +62,7 @@ async def process_message(update):
         Eres práctico, leal y siempre buscas oportunidades para que AuKaN crezca.
         Responde como si fueras su mánager de verdad."""
         
-        # Conectar con DeepSeek API (esto es síncrono, no necesita await)
+        # Conectar con DeepSeek API
         headers = {
             'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
             'Content-Type': 'application/json'
@@ -84,9 +97,9 @@ async def process_message(update):
         except:
             pass
 
-async def main():
-    """Loop principal async"""
-    print("🔥 INICIANDO LOOP PRINCIPAL...")
+async def bot_loop():
+    """Loop principal del bot"""
+    print("🔥 INICIANDO LOOP DEL BOT...")
     last_update_id = await get_last_update_id()
     
     while True:
@@ -108,6 +121,20 @@ async def main():
             print(f"❌ Error general: {e}")
             await asyncio.sleep(10)
 
+def run_flask():
+    """Ejecutar servidor Flask en un hilo separado"""
+    print(f"🌐 Iniciando servidor web en puerto {PORT}...")
+    app.run(host='0.0.0.0', port=PORT, debug=False)
+
+async def main():
+    """Función principal"""
+    # Iniciar servidor web en segundo plano
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    
+    # Iniciar el bot
+    await bot_loop()
+
 if __name__ == '__main__':
-    # Ejecutar el loop async
+    # Ejecutar todo
     asyncio.run(main())
